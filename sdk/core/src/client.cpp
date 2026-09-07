@@ -38,7 +38,7 @@ struct Client::Impl {
     bool stop = false;
 
     std::uint64_t flush_requested = 0;
-    std::uint64_t flush_compelted = 0;
+    std::uint64_t flush_completed = 0;
     
     std::thread                    worker;
 
@@ -81,7 +81,44 @@ struct Client::Impl {
         return total;
     }
 
-}
+    // the workers main loop. runs on `worker` thread until `stop` is set.
+    // handles all three wake conditions inside a single
+    // wait_until + predicate.
+    void WorkerLoop() {
+        using clock = std::chrono::steady_clock;
+        auto last_flush = clock::now();
+        const auto interval = std::chrono::duration<double>(config.flush_interval_seconds);
+
+        while (true) {
+            std::unique_lock<std::mutex> lock(mu);
+
+            // wake if: stopping, an explicit flush was requested, or we have
+            // at least one full batch. otherwise, wait up to the flush
+            // interval and let the timeout drive a periodic flush.
+
+            const auto deadline = last_flush + std::chrono::duration_cast<clock::duration>(interval);
+            cv.wait_until(lock, deadline, [this] {
+                return stop
+                    || flush_requested > flush_completed
+                    || queue.size() >= config.batch_size;
+            });
+
+            // snapshot the reason we woke up while we still hold the lock,
+            // so the downstream code doesnt' have to re-check under the mutex.
+            const bool should_stop = stop;
+            const bool explicit_flush = flush_requested > flush_completed;
+            const auto now = clock::now();
+            const bool interval_elapsed = now >= deadline;
+            const bool has_full_batch = queue.size() >= config.batch_size;
+            const std::uint64_t seen_request = flush_requested;
+
+            lock.unlock();
+
+
+            
+        }
+    }
+};
 
 }
 
