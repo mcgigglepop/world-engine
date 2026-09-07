@@ -10,6 +10,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <deque>
+#include <thread>
+#include <vector>
 
 namespace worldengine {
 namespace {
@@ -40,6 +42,30 @@ struct Client::Impl {
     
     std::thread                    worker;
 
+    // Pop up to `max` events off the queue and hand them to the transport. 
+    // called only from the worker thread. returns number of events sent. 
+    std::size_t DrainOnce(std::size_t max) {
+        std::vector<Event> batch;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (queue.empty()) return 0;
+            const std::size_t take = (max == 0)
+                ? queue.size()
+                : std::min(queue.size(), max);
+            batch.reserve(take);
+            for (std::size_t i = 0; i < take; ++i) {
+                batch.push_back(std::move(queue.front()));
+                queue.pop_front();
+            } 
+        }
+        if (transport) {
+            // compute headers on the worker thread. if no auth is configured,
+            // pass an empty header vector so unauthenticated local mode still works.
+            HttpHeaders headers = auth ? auth->GetHeaders() : HttpHeaders();
+            transport->Send(batch, headers);
+        }
+        return batch.size();
+    }
 
 
 }
