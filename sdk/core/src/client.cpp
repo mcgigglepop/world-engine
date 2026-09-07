@@ -233,7 +233,25 @@ void Client::Flush() {
     impl_->cv.wait(lock, [&] { return impl_->flush_completed >= my_ticket || !impl_->running; });
 }
 
-
+void Client::Shutdown() {
+    // Move the worker handle out under the lock so we can call join()
+    // without holding it — join() will block until the worker returns, and
+    // the worker acquires the lock inside WorkerLoop.
+    std::thread worker;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mu);
+        if (!impl_->running) return;
+        impl_->stop    = true;
+        impl_->running = false;
+        worker         = std::move(impl_->worker);
+    }
+    // Wake the worker so it observes `stop == true` and exits promptly.
+    impl_->cv.notify_all();
+    // We join (not detach) because we want a strict "no worker running after
+    // Shutdown returns" guarantee — a detached worker could still be writing
+    // to stdout while the demo prints "done" and confuses users.
+    if (worker.joinable()) worker.join();
+}
 
 }
 
