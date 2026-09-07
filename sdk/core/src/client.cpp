@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "worldengine/auth.h"
-
+#include "worldengine/event.h"
 
 namespace worldengine {
 namespace {
