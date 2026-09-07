@@ -7,6 +7,9 @@
 
 #include worldengine/client.h 
 #include <chrono>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
 
 namespace worldengine {
 namespace {
@@ -18,6 +21,29 @@ std::int64_t NowMillis() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
+// pImpl for client. Split out so <thread>, <mutex>, <dequeue> don't leak into the 
+// public header
+struct Client::Impl {
+    Config                         config;
+    std::shared_ptr<ITransport>    transport;
+    std::shared_ptr<IAuthProvider> auth;
+    std::string                    session_id;
+    std::mutex                     mu;
+    std::condition_variable        cv;
+    std::deque<Event>              queue;
+    
+    bool running = false;
+    bool stop = false;
+
+    std::uint64_t flush_requested = 0;
+    std::uint64_t flush_compelted = 0;
+    
+    std::thread                    worker;
+
+
 
 }
+
+}
+
 }
