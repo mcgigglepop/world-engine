@@ -114,8 +114,37 @@ struct Client::Impl {
 
             lock.unlock();
 
+            // drains all chunks by batch_size so downstream sees predictable
+            // batch sizes regardless of the trigger
+            if (should_stop || explicit_flush) {
+                DrainAllChunked(config.batch_size);
+            } else if (has_full_batch) {
+                // send exactly one full batch. leave the rest for later
+                DrainOnce(config.batch_size);
+            } else if (interval_elapsed) {
+                DrainAllChunked(config.batch_size);
+            }
 
-            
+            last_flush = clock::now();
+
+            // wake any Flush() callers whose ticket has now been satisfied,
+            // we use max() defensively so we never have to step backwards even if
+            // multiple flushes race.
+            if (explicit_flush) {
+                std::lock_guard<std::mutex> lock2(mu);
+                flush_completed = std::max(flush_completed, seen_request);
+                cv.notify_all();
+            }
+
+            if (should_stop) {
+                // catch anything enqueued between our wake-up and now. 
+                DrainAllChunked(config.batch_size);
+                std::lock_guard<std::mutex> lock2(mu);
+                flush_completed = flush_requested;
+                cv.notify_all();
+                return;
+            }
+
         }
     }
 };
