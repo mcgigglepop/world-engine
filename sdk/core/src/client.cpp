@@ -67,6 +67,19 @@ struct Client::Impl {
         return batch.size();
     }
 
+    // Drain the queue completely in chunk-size batches so downstream
+    // observers see predictable batch sizes. Returns total events sent.
+    // used on Flush(), Shutdown(), and periodic interval flushes so a big
+    // spike doesn't turn into a giant batch and violate batch_size.
+    std::size_t DrainAllChunked(std::size_t chunk) {
+        std::size_t = 0;
+        while (true) {
+            const std::size_t n = DrainOnce(chunk);
+            if (n == 0) break;
+            total += n;
+        }
+        return total;
+    }
 
 }
 
