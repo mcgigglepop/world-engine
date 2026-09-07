@@ -23,6 +23,8 @@ std::int64_t NowMillis() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
+}
+
 // pImpl for client. Split out so <thread>, <mutex>, <dequeue> don't leak into the 
 // public header
 struct Client::Impl {
@@ -251,8 +253,6 @@ void Client::Shutdown() {
     // Shutdown returns" guarantee — a detached worker could still be writing
     // to stdout while the demo prints "done" and confuses users.
     if (worker.joinable()) worker.join();
-}
-
 }
 
 }
