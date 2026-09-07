@@ -184,10 +184,39 @@ void Client::Initialize(const Config& config) {
         impl_->flush_requested = 0;
         impl_->flush_completed = 0;
     }
-    
+
     // Start the worker last, after everything it will read is in place.
     impl_->worker = std::thread(&Impl::WorkerLoop, impl_.get());
 }
+
+void Client::Track(const std::string& event_name, const Properties& properties) {
+    // Fast path: cheap to call from the game thread. All work is either
+    // trivial (copy strings, generate UUID via thread_local RNG) or defers
+    // to the worker. No I/O, no allocations beyond the Event and its
+    // properties
+    e.event_id     = internal::NewUuidV4();
+    e.project_id   = impl_->config.project_id;
+    e.session_id   = impl_->session_id;
+    e.user_id      = impl_->config.user_id;
+    e.event_name   = event_name;
+    e.timestamp_ms = NowMillis();
+    e.sdk_version  = kSdkVersion;
+    e.platform     = kPlatform;
+    e.properties   = properties;
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->mu);
+        if (!impl_->running) return;   // silently drop after shutdown
+        impl_->queue.push_back(std::move(e));
+    }
+    // notify_one because only the (single) worker is waiting on the queue.
+    // notify_all would be equivalent but wastes a syscall on some platforms.
+    impl_->cv.notify_one();
+}
+
+
+
+
 
 }
 
