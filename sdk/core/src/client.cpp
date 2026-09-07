@@ -6,12 +6,20 @@
 //
 
 #include worldengine/client.h 
+
+#include <atomic>
 #include <chrono>
-#include <mutex>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
+#include <memory>
+#include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
+
+#include "worldengine/auth.h"
+
 
 namespace worldengine {
 namespace {
