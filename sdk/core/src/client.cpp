@@ -21,6 +21,7 @@
 #include "worldengine/auth.h"
 #include "worldengine/event.h"
 #include "worldengine/transport.h"
+#include "uuid.h"
 
 namespace worldengine {
 namespace {
