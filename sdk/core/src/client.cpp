@@ -149,6 +149,46 @@ struct Client::Impl {
     }
 };
 
+Client::Client() : impl_(std::make_unique<Impl>()) {}
+
+Client::~Client() {
+    // RAII safety net: if the caller forgets to shutdown, do it now. 
+    Shutdown();
+}
+
+void Client::Initialize(const Config& config) {
+    // if we're already running, tear down cleanly first so Initialize is 
+    // idempotent from the callers perspective.
+    Shutdown();
+
+    impl_->config = config;
+    // fall back to StubTransport so the SDK works with zero configuration.
+    impl_->transport = config.transport ? config.transport : MakeStubTransport();
+
+    if (config.auth) {
+        impl_->auth = config.auth;
+    } else if (!config.api_key.empty()) {
+        impl_->auth = std::make_shared<StaticApiKeyAuth>(config.api_key);
+    } else {
+        impl_->auth.reset();
+    }
+
+    // one session_id per client lifetime = stable across every Track() call
+    // until the next Initialize/shutdown cycle.
+    impl_->session_id = internal::NewUuidV4();
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->mu);
+        impl_->stop            = false;
+        impl_->running         = true;
+        impl_->flush_requested = 0;
+        impl_->flush_completed = 0;
+    }
+    
+    // Start the worker last, after everything it will read is in place.
+    impl_->worker = std::thread(&Impl::WorkerLoop, impl_.get());
+}
+
 }
 
 }
