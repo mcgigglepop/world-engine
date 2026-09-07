@@ -214,7 +214,24 @@ void Client::Track(const std::string& event_name, const Properties& properties) 
     impl_->cv.notify_one();
 }
 
+void Client::Flush() {
+    // Take a ticket (a snapshot of flush_requested) while holding the lock so
+    // the worker sees a consistent view. If already shut down, nothing to do.
+    std::uint64_t my_ticket;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mu);
+        if (!impl_->running) return;
+        my_ticket = ++impl_->flush_requested;
+    }
+    // notify_all in case multiple threads are waiting (worker + other
+    // Flush() callers waiting for their own tickets).
+    impl_->cv.notify_all();
 
+    // Wait until the worker has acknowledged our ticket or the client has
+    // been shut down out from under us.
+    std::unique_lock<std::mutex> lock(impl_->mu);
+    impl_->cv.wait(lock, [&] { return impl_->flush_completed >= my_ticket || !impl_->running; });
+}
 
 
 
